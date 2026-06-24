@@ -136,6 +136,9 @@ export class WebPlugin implements Plugin {
     }
 
     const app = new Hono()
+    const mode = process.env['OPENALICE_MODE'] ?? 'full'
+    const workspaceId = process.env['AQ_WS_ID'] ?? 'openalice-core'
+    const root = process.env['OPENALICE_CORE_WORKSPACE_DIR'] ?? process.cwd()
 
     app.onError((err: Error, c: Context) => {
       if (err instanceof SyntaxError) {
@@ -146,6 +149,13 @@ export class WebPlugin implements Plugin {
     })
 
     app.use('/api/*', cors())
+    app.get('/__health', (c) => c.json({
+      ok: true,
+      mode,
+      root,
+      mcp: `http://127.0.0.1:${this.config.mcpPort}/mcp`,
+      workspaceId,
+    }))
 
     // ==================== Auth gate ====================
     //
@@ -194,11 +204,12 @@ export class WebPlugin implements Plugin {
     // UTA service (decision #2 of UTA-split v1 — UI stays single-origin).
     // Trading domain + the MockBroker god-view live on UTA's side.
     const utaUrl = process.env['OPENALICE_UTA_URL']
-    if (!utaUrl) {
+    if (utaUrl) {
+      app.route('/api/trading', createTradingProxyRoutes({ utaBaseUrl: utaUrl }))
+      app.route('/api/simulator', createTradingProxyRoutes({ utaBaseUrl: utaUrl }))
+    } else if (mode !== 'watch') {
       throw new Error('OPENALICE_UTA_URL not set — UTA service should be spawned by Guardian before Alice boots')
     }
-    app.route('/api/trading', createTradingProxyRoutes({ utaBaseUrl: utaUrl }))
-    app.route('/api/simulator', createTradingProxyRoutes({ utaBaseUrl: utaUrl }))
     app.route('/api/tools', createToolsRoutes(ctx.toolCenter))
     app.route('/api/agent-status', createAgentStatusRoutes(ctx))
     app.route('/api/news', createNewsRoutes(ctx))

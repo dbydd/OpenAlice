@@ -186,6 +186,20 @@ export async function createWorkspaceService(opts: CreateWorkspaceServiceOptions
     launcherLogger.child({ scope: 'registry' }),
   );
 
+  const coreWorkspaceDir = process.env.OPENALICE_CORE_WORKSPACE_DIR;
+  if (process.env.OPENALICE_MODE === 'watch' && coreWorkspaceDir) {
+    const id = process.env.AQ_WS_ID || 'openalice-core';
+    const existing = registry.get(id);
+    await registry.upsert({
+      id,
+      tag: id,
+      dir: coreWorkspaceDir,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      template: 'root',
+      agents: ['pi'],
+    });
+  }
+
   const sessionRegistry = await SessionRegistry.load(
     join(config.launcherRoot, 'state'),
     launcherLogger.child({ scope: 'session-registry' }),

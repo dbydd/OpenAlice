@@ -96,12 +96,15 @@ export function registerCliRoutes(app: Hono, deps: CliGatewayDeps): void {
     exportParam: string,
   ):
     | { ok: true; exp: CliExport; ws: WsMeta }
-    | { ok: false; status: 404 | 503; error: string } => {
+    | { ok: false; status: 403 | 404 | 503; error: string } => {
     const ws = resolveWs(wsIdParam)
     if ('error' in ws) {
       return ws.error === 'unavailable'
         ? { ok: false, status: 503, error: 'workspace service unavailable' }
         : { ok: false, status: 404, error: 'unknown workspace' }
+    }
+    if (process.env.OPENALICE_MODE === 'watch' && exportParam === 'uta') {
+      return { ok: false, status: 403, error: 'UTA is disabled in OPENALICE_MODE=watch' }
     }
     const exp = getExport(exportParam)
     if (!exp) return { ok: false, status: 404, error: `unknown CLI export: ${exportParam}` }

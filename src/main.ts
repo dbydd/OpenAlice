@@ -26,6 +26,7 @@ import { buildSDKCredentials } from './domain/market-data/credential-map.js'
 import { createMarketSearchTools } from './tool/market.js'
 import { createQuantTools } from './tool/quant.js'
 import { createBarService } from './domain/market-data/bars/index.js'
+import type { UtaBarGateway } from './domain/market-data/bars/types.js'
 import { createReferenceData } from './domain/market-data/reference/service.js'
 import { createSectorRotationTools } from './tool/sector-rotation.js'
 import { createReferenceBoardTools } from './tool/reference-board.js'
@@ -48,7 +49,7 @@ import { createListenerRegistry } from './core/listener-registry.js'
 import { createEventBus } from './core/event-bus.js'
 import { createMetricsListener } from './task/metrics/index.js'
 import { NewsCollectorStore, NewsCollector } from './domain/news/index.js'
-import { createNewsArchiveTools } from './tool/news.js'
+import { createNewsArchiveTools, createNewsSourceTools } from './tool/news.js'
 
 // ==================== Persistence paths ====================
 
@@ -56,6 +57,24 @@ const PERSONA_FILE = dataPath('brain', 'persona.md')
 const PERSONA_DEFAULT = defaultPath('persona.default.md')
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+const isWatchMode = () => process.env['OPENALICE_MODE'] === 'watch'
+
+const disabledUtaBarGateway: UtaBarGateway = {
+  async has() { return false },
+  async get() { return undefined },
+  async searchContracts() { return [] },
+}
+
+function createDisabledUtaManager(): UTAManagerSDK {
+  return new Proxy(disabledUtaBarGateway, {
+    get(target, prop) {
+      if (prop in target) return Reflect.get(target, prop)
+      return async () => {
+        throw new Error('UTA is disabled in OPENALICE_MODE=watch')
+      }
+    },
+  }) as unknown as UTAManagerSDK
+}
 
 /** Read a file, copying from default if it doesn't exist yet. */
 async function readWithDefault(target: string, defaultFile: string): Promise<string> {
@@ -108,16 +127,20 @@ async function main() {
   // `services/uta/src/main.ts`.
 
   const utaUrl = process.env['OPENALICE_UTA_URL']
-  if (!utaUrl) {
-    throw new Error('OPENALICE_UTA_URL not set — Guardian must spawn the UTA service before Alice boots')
-  }
-  const utaClient = createUTAClient({ baseUrl: utaUrl })
-  const utaHealth = await waitForUTAReady({ baseUrl: utaUrl, timeoutMs: 15_000 })
-  if (!utaHealth) {
-    throw new Error(`UTA service at ${utaUrl} did not become ready within 15s`)
-  }
-  console.log(`uta: ready (${utaHealth.utas} accounts, startedAt=${utaHealth.startedAt})`)
-  const utaManager = new UTAManagerSDK({ client: utaClient })
+  const utaManager = isWatchMode()
+    ? createDisabledUtaManager()
+    : await (async () => {
+        if (!utaUrl) {
+          throw new Error('OPENALICE_UTA_URL not set — Guardian must spawn the UTA service before Alice boots')
+        }
+        const utaClient = createUTAClient({ baseUrl: utaUrl })
+        const utaHealth = await waitForUTAReady({ baseUrl: utaUrl, timeoutMs: 15_000 })
+        if (!utaHealth) {
+          throw new Error(`UTA service at ${utaUrl} did not become ready within 15s`)
+        }
+        console.log(`uta: ready (${utaHealth.utas} accounts, startedAt=${utaHealth.startedAt})`)
+        return new UTAManagerSDK({ client: utaClient })
+      })()
 
   // ==================== Persona ====================
   // The persona file is seeded on first run so the user has an editable
@@ -198,6 +221,8 @@ async function main() {
 
   // ==================== Tool Registration ====================
 
+  let newsCollector: NewsCollector | null = null
+
   toolCenter.register(createThinkingTools(), 'thinking')
 
   // One unified set of trading tools — routes via `source` parameter at runtime
@@ -214,6 +239,7 @@ async function main() {
   }
   if (config.news.enabled) {
     toolCenter.register(createNewsArchiveTools(newsStore), 'rss')
+    toolCenter.register(createNewsSourceTools(() => newsCollector), 'rss-config')
   }
   // v1 calculateIndicator (createAnalysisTools) is retired from the tool surface
   // — calculateQuant (v2, barId-keyed) supersedes it and the two descriptions
@@ -262,7 +288,6 @@ async function main() {
 
   // ==================== News Collector ====================
 
-  let newsCollector: NewsCollector | null = null
   if (config.news.enabled && config.news.feeds.length > 0) {
     newsCollector = new NewsCollector({
       store: newsStore,

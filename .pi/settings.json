@@ -1,0 +1,10 @@
+{
+  "openalice": {
+    "webPort": 47331,
+    "mcpPort": 47332,
+    "workspaceId": "openalice-core",
+    "autoStart": true,
+    "maxRestarts": 1,
+    "logPath": "logs/openalice-watch.log"
+  }
+}

@@ -99,6 +99,21 @@ export class WorkspaceRegistry {
     await this.flush();
   }
 
+  async upsert(ws: WorkspaceMeta): Promise<void> {
+    const existing = this.byId.get(ws.id);
+    if (existing) {
+      if (existing.tag !== ws.tag && this.tagsInUse.has(ws.tag)) {
+        throw new Error(`workspace tag already in use: ${ws.tag}`);
+      }
+      this.tagsInUse.delete(existing.tag);
+      this.byId.set(ws.id, ws);
+      this.tagsInUse.add(ws.tag);
+      await this.flush();
+      return;
+    }
+    await this.add(ws);
+  }
+
   async remove(id: string): Promise<WorkspaceMeta | undefined> {
     const ws = this.byId.get(id);
     if (!ws) return undefined;

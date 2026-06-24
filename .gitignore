@@ -5,8 +5,15 @@ logs/
 state.json
 *.log
 
+# Pi project files are shared, but local memory/sandbox state stays private.
+.pi/hindsight/
+.pi/sandbox.json
+.pi/local.*
+
 .env
 .env.*
+.onlyne/
+notes_and_reports/
 !ui/.env.demo
 
 # OS

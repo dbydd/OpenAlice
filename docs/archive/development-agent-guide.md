@@ -1,3 +1,9 @@
+# Development Agent Guide (Archived)
+
+This document used to live at the repository root as `CLAUDE.md`. It is archived here so runtime Pi sessions launched from the OpenAlice root do not automatically ingest development-only context. Treat it as maintainer documentation, not runtime agent instructions.
+
+---
+
 # OpenAlice
 
 AI trading agent. From a code-writing perspective, the Alice process is two

@@ -131,6 +131,20 @@ export const CLI_EXPORTS: Record<string, CliExport> = {
       },
     },
   },
+  watch: {
+    binary: 'alice-watch',
+    scope: 'global',
+    description: 'Watch-mode hot configuration for RSS sources',
+    commands: {
+      rss: {
+        list: 'rssSourceList',
+        add: 'rssSourceAdd',
+        remove: 'rssSourceRemove',
+        enable: 'rssSourceEnable',
+        disable: 'rssSourceDisable',
+      },
+    },
+  },
   workspace: {
     binary: 'alice-workspace',
     scope: 'scoped',

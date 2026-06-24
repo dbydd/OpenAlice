@@ -11,6 +11,7 @@ import type { IEntityStore } from '../core/entity-store.js'
 import type { WorkspaceService } from '../workspaces/service.js'
 import { extractMcpShape, wrapToolExecute } from '../core/mcp-export.js'
 import { registerCliRoutes } from './cli.js'
+import { mappedToolNames } from './cli-commands.js'
 
 /**
  * MCP Plugin — exposes OpenAlice tools via Streamable HTTP, plus the CLI gateway.
@@ -72,8 +73,10 @@ export class McpPlugin implements Plugin {
     /** Build a per-request McpServer with the global ToolCenter catalog. */
     const createGlobalMcpServer = async () => {
       const tools = await toolCenter.getMcpTools()
+      const masked = process.env.OPENALICE_MODE === 'watch' ? mappedToolNames('uta') : new Set<string>()
       const mcp = new McpServer({ name: 'open-alice', version: '1.0.0' })
       for (const [name, t] of Object.entries(tools)) {
+        if (masked.has(name)) continue
         if (!t.execute) continue
         mcp.registerTool(name, {
           description: t.description,

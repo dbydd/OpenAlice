@@ -80,7 +80,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		shuttingDown = true;
 		if (child && childStartedByUs) {
-			try { child.kill("SIGTERM"); } catch { /* already gone */ }
+			killChild(child);
 		}
 	});
 }
@@ -119,6 +119,7 @@ async function startBackend(opts: { manual: boolean }): Promise<string> {
 		env,
 		stdio: ["ignore", "pipe", "pipe"],
 		shell: process.platform === "win32",
+		detached: process.platform !== "win32",
 	});
 	child.stdout?.pipe(log, { end: false });
 	child.stderr?.pipe(log, { end: false });
@@ -134,7 +135,7 @@ async function startBackend(opts: { manual: boolean }): Promise<string> {
 
 	const ready = await waitForHealthy(cfg, 20_000);
 	if (!ready) {
-		try { child.kill("SIGTERM"); } catch { /* already gone */ }
+		killChild(child);
 		throw new Error(`OpenAlice did not become healthy at ${healthUrl(cfg)}; see ${cfg.logPath}`);
 	}
 	return opts.manual ? `OpenAlice started: ${healthUrl(cfg)}` : `OpenAlice auto-started: ${healthUrl(cfg)}`;
@@ -225,6 +226,15 @@ function healthUrl(cfg: OpenAliceSettings): string {
 
 function isOpenAliceRoot(): boolean {
 	return existsSync(resolve(process.cwd(), "package.json")) && existsSync(resolve(process.cwd(), "src", "main.ts")) && existsSync(resolve(process.cwd(), "scripts", "guardian", "watch.ts"));
+}
+
+function killChild(proc: ChildProcess): void {
+	try {
+		if (process.platform !== "win32" && proc.pid) process.kill(-proc.pid, "SIGTERM");
+		else proc.kill("SIGTERM");
+	} catch {
+		try { proc.kill("SIGTERM"); } catch { /* already gone */ }
+	}
 }
 
 function readPort(value: unknown, fallback: number): number {

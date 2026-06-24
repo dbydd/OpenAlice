@@ -21,7 +21,7 @@ Useful commands:
 /openalice start
 ```
 
-Logs are written to `logs/openalice-watch.log`. Do not ask the model to ingest the whole log; inspect only targeted tails/errors when debugging.
+Logs are written to `logs/openalice-watch.log`. Do not ingest the whole log; inspect only targeted tails/errors when debugging.
 
 ## Watch workflow
 
@@ -30,6 +30,10 @@ Logs are written to `logs/openalice-watch.log`. Do not ask the model to ingest t
 - For heartbeat/digest tasks, use Pi schedule-prompt infrastructure.
 - For notifications and IM routing, use Onlyne.
 - Complex custom alert/event delivery should go through Onlyne loopback rather than OpenAlice-owned automation.
+
+## Notes and reports
+
+Use `notes_and_reports/金融/` and `notes_and_reports/量化/` for durable market notes, daily reports, scheduled report outputs, autoresearch logs, market observation records, and loose scratch thoughts. Prefer dated Markdown files, e.g. `notes_and_reports/金融/2026-06-24-daily-report.md`.
 
 ## RSS workflow
 

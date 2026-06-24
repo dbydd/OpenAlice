@@ -13,6 +13,7 @@ state.json
 .env
 .env.*
 .onlyne/
+notes_and_reports/
 !ui/.env.demo
 
 # OS

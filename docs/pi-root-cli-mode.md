@@ -214,7 +214,7 @@ Use Pi-supported files:
 .pi/extensions/<extension>.ts
 ```
 
-Do **not** rely on `.pi/AGENTS.md`; Pi project context files are root/ancestor `AGENTS.md` / `CLAUDE.md`, while `.pi/SYSTEM.md` and `.pi/APPEND_SYSTEM.md` are the `.pi` prompt files.
+Do **not** rely on `.pi/AGENTS.md`; Pi project context files are root/ancestor `AGENTS.md` / `CLAUDE.md`, while `.pi/SYSTEM.md` and `.pi/APPEND_SYSTEM.md` are the `.pi` prompt files. Keep development-agent context archived under `docs/archive/` instead of root `CLAUDE.md` so runtime Pi sessions do not ingest maintainer workflow instructions.
 
 Do not lock down broad `.pi/settings.json` defaults in the first design pass. Root CLI mode will depend on specific Pi settings, but most defaults should be discovered while using the mode and then committed once they are real requirements.
 

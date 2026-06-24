@@ -28,6 +28,7 @@ Onlyne is a workspace-local IM channel broker. Use it only as a local messaging 
 | Status/channels | `onlyne client '{"id":"status","op":"status"}'` |
 | Send Markdown | `onlyne client '{"id":"send","op":"send_message","channel_id":"qqbot","conversation_id":"ID","text":"# Report\\n\\n| A | B |\\n|---|---|\\n| 1 | 2 |"}'` |
 | Send literal text | `onlyne client '{"id":"send","op":"send_message","channel_id":"telegram","conversation_id":"CHAT_ID","text":"# not a heading","raw_text":true}'` |
+| Send to Feishu home | `source .onlyne/.env && onlyne client "{\"id\":\"send\",\"op\":\"send_message\",\"channel_id\":\"feishu\",\"conversation_id\":\"$FEISHU_HOME_CHANNEL\",\"text\":\"hello\",\"raw_text\":true}"` |
 | Reply text | `onlyne client '{"id":"reply","op":"reply_message","channel_id":"telegram","conversation_id":"CHAT_ID","text":"hello","raw_text":true}'` |
 | Read channel history | `onlyne client '{"id":"hist","op":"fetch_channel_history","channel_id":"telegram","limit":20}'` |
 | Read merged history | `onlyne client '{"id":"all","op":"fetch_all_history","limit":50}'` |
@@ -75,6 +76,8 @@ Otherwise use the CLI/socket request shown above.
 2. Send a normal message to the target platform bot/account.
 3. Read the platform reply; it contains redacted channel/conversation/thread metadata.
 4. Use the returned `channel_id` and `conversation_id` in `send_message` or `reply_message`.
+
+For this OpenAlice workspace, the Feishu home conversation is stored locally in `.onlyne/.env` as `FEISHU_HOME_CHANNEL`. It is intentionally not committed. When sending routine reports or test messages to the user's Feishu home, read that env var instead of hard-coding the ID in tracked files.
 
 ## Common Mistakes
 

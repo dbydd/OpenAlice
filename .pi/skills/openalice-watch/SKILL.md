@@ -35,4 +35,4 @@ Logs are written to `logs/openalice-watch.log`. Do not ask the model to ingest t
 
 - Search archive with `alice rss grep` or `alice rss glob`.
 - Read specific items with `alice rss read`.
-- RSS source add/remove/enable/disable should use the OpenAlice-owned RSS source management CLI/tool once available; do not edit config files directly.
+- Manage RSS sources with `alice-watch rss list|add|remove|enable|disable`; do not edit config files directly.

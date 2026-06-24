@@ -54,6 +54,11 @@ export class NewsCollector {
     }
   }
 
+  /** Replace feeds without restarting the collector. */
+  updateFeeds(feeds: RSSFeedConfig[]): void {
+    this.feeds = feeds
+  }
+
   /**
    * Fetch all active feeds once. Disabled feeds are skipped. Returns counts.
    *

@@ -49,7 +49,7 @@ import { createListenerRegistry } from './core/listener-registry.js'
 import { createEventBus } from './core/event-bus.js'
 import { createMetricsListener } from './task/metrics/index.js'
 import { NewsCollectorStore, NewsCollector } from './domain/news/index.js'
-import { createNewsArchiveTools } from './tool/news.js'
+import { createNewsArchiveTools, createNewsSourceTools } from './tool/news.js'
 
 // ==================== Persistence paths ====================
 
@@ -221,6 +221,8 @@ async function main() {
 
   // ==================== Tool Registration ====================
 
+  let newsCollector: NewsCollector | null = null
+
   toolCenter.register(createThinkingTools(), 'thinking')
 
   // One unified set of trading tools — routes via `source` parameter at runtime
@@ -237,6 +239,7 @@ async function main() {
   }
   if (config.news.enabled) {
     toolCenter.register(createNewsArchiveTools(newsStore), 'rss')
+    toolCenter.register(createNewsSourceTools(() => newsCollector), 'rss-config')
   }
   // v1 calculateIndicator (createAnalysisTools) is retired from the tool surface
   // — calculateQuant (v2, barId-keyed) supersedes it and the two descriptions
@@ -285,7 +288,6 @@ async function main() {
 
   // ==================== News Collector ====================
 
-  let newsCollector: NewsCollector | null = null
   if (config.news.enabled && config.news.feeds.length > 0) {
     newsCollector = new NewsCollector({
       store: newsStore,

@@ -26,6 +26,8 @@ This Pi project is the OpenAlice root CLI/watch workspace.
 - Pi MCP adapter: use when schema-aware tool calls are clearer than shelling out to CLI.
 - Onlyne: IM receive/send/notification surface in CLI mode.
 
+Agent suggestion: if `.onlyne/` is missing in the OpenAlice root, remind the user to initialize the Onlyne workspace before relying on IM send/receive. Without `.onlyne/.env` and the workspace daemon state, IM push/pull will not work. Do not create or fill `.onlyne/.env` unless the user explicitly asks.
+
 ## Scheduling and heartbeat
 
 Use Pi `schedule_prompt` for low-frequency recurring work:

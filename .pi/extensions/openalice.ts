@@ -3,7 +3,8 @@ import { createWriteStream, existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 
 type OpenAliceSettings = {
 	webPort: number;
@@ -35,8 +36,13 @@ let child: ChildProcess | null = null;
 let childStartedByUs = false;
 let shuttingDown = false;
 let restartCount = 0;
+const watchChildren = new Map<string, ChildProcess>();
+let stoppingWatchDaemon = false;
 
 export default function (pi: ExtensionAPI) {
+	registerOpenAliceCliTools(pi);
+	registerWatchDaemonTool(pi);
+
 	pi.registerCommand("openalice", {
 		description: "Manage the OpenAlice root watch backend: /openalice status|start",
 		async handler(args, ctx) {
@@ -47,6 +53,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			if (verb === "start") {
 				const message = await startBackend({ manual: true });
+				await startWatchDaemon(ctx);
 				ctx.ui.notify(message, "info");
 				return;
 			}
@@ -70,6 +77,7 @@ export default function (pi: ExtensionAPI) {
 		}
 		try {
 			await startBackend({ manual: false });
+			await startWatchDaemon(ctx);
 			ctx.ui.setStatus?.("openalice", "OpenAlice: running");
 		} catch (error) {
 			ctx.ui.setStatus?.("openalice", "OpenAlice: failed");
@@ -79,10 +87,189 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", async () => {
 		shuttingDown = true;
+		stopWatchDaemon();
 		if (child && childStartedByUs) {
 			killChild(child);
 		}
 	});
+}
+
+const CliParams = Type.Object({
+	args: Type.Optional(Type.Array(Type.String(), { description: "CLI argv after the binary, e.g. ['rss', 'grep', '半导体']" })),
+	timeoutMs: Type.Optional(Type.Number({ description: "Timeout in milliseconds; default 60000" })),
+});
+
+const WatchDaemonParams = Type.Object({
+	action: Type.Optional(Type.Union([
+		Type.Literal("status"),
+		Type.Literal("start"),
+		Type.Literal("reload"),
+		Type.Literal("stop"),
+	], { description: "Watch daemon action. Defaults to status." })),
+});
+
+type CliParamsValue = { args?: string[]; timeoutMs?: number };
+type WatchDaemonParamsValue = { action?: "status" | "start" | "reload" | "stop" };
+
+function registerWatchDaemonTool(pi: ExtensionAPI): void {
+	pi.registerTool(defineTool({
+		name: "openalice_watch_daemon",
+		label: "OpenAlice watch daemon",
+		description: "Manage deterministic local watch scripts declared in config/watch-daemon.json: status/start/reload/stop. Scripts own their own business logic and notifications; this daemon only supervises process lifecycle. IMPORTANT for agents: watcher scripts must keep recoverable/idempotent state (pid/lock, cooldowns, last-seen markers, durable offsets) so they can resume safely after Pi exits, crashes, or pi -c restarts.",
+		parameters: WatchDaemonParams,
+		executionMode: "serial",
+		async execute(_id, params) {
+			const action = (params as WatchDaemonParamsValue).action ?? "status";
+			if (action === "start") await startWatchDaemon();
+			if (action === "reload") { stopWatchDaemon(); await startWatchDaemon(); }
+			if (action === "stop") stopWatchDaemon();
+			return { content: [{ type: "text", text: await watchDaemonStatusText() }] };
+		},
+	}));
+}
+
+function registerOpenAliceCliTools(pi: ExtensionAPI): void {
+	const specs: Array<{ name: string; binary: "alice" | "traderhub" | "alice-watch" | "alice-workspace"; label: string; description: string }> = [
+		{ name: "openalice_alice", binary: "alice", label: "OpenAlice alice", description: "Run the OpenAlice alice CLI shim for RSS archive, market search, bar search, quant calculations, and calculator work. Pass argv as args, e.g. ['rss','grep','半导体']." },
+		{ name: "openalice_traderhub", binary: "traderhub", label: "OpenAlice traderhub", description: "Run the OpenAlice traderhub CLI shim for low-frequency market, fundamentals, macro, calendars, boards, ETFs, and reference data." },
+		{ name: "openalice_watch_cli", binary: "alice-watch", label: "OpenAlice alice-watch", description: "Run the OpenAlice alice-watch CLI shim for watch-mode operations such as RSS source management. Do not use for trading." },
+		{ name: "openalice_workspace", binary: "alice-workspace", label: "OpenAlice alice-workspace", description: "Run the OpenAlice alice-workspace CLI shim for current root workspace operations such as track add/search. This uses AQ_WS_ID=openalice-core by default." },
+	];
+	for (const spec of specs) {
+		pi.registerTool(defineTool({
+			name: spec.name,
+			label: spec.label,
+			description: `${spec.description}\nThe tool injects OPENALICE_MCP_URL and AQ_WS_ID automatically; do not shell out to bare PATH commands.`,
+			parameters: CliParams,
+			executionMode: "parallel",
+			async execute(_id, params) {
+				return { content: [{ type: "text", text: await runOpenAliceCli(spec.binary, params as CliParamsValue) }] };
+			},
+		}));
+	}
+}
+
+async function runOpenAliceCli(binary: "alice" | "traderhub" | "alice-watch" | "alice-workspace", params: CliParamsValue): Promise<string> {
+	if (!isOpenAliceRoot()) throw new Error("not in OpenAlice root");
+	const cfg = await loadConfig();
+	const script = resolve(process.cwd(), "src", "workspaces", "cli", "bin", binary);
+	if (!existsSync(script)) throw new Error(`missing OpenAlice CLI shim: ${script}`);
+	const args = Array.isArray(params.args) ? params.args : [];
+	const timeoutMs = Number.isFinite(params.timeoutMs) && Number(params.timeoutMs) > 0 ? Number(params.timeoutMs) : 60_000;
+	const env = {
+		...process.env,
+		OPENALICE_MODE: "watch",
+		OPENALICE_WEB_PORT: String(cfg.webPort),
+		OPENALICE_MCP_PORT: String(cfg.mcpPort),
+		OPENALICE_MCP_URL: `http://127.0.0.1:${cfg.mcpPort}/mcp`,
+		AQ_WS_ID: cfg.workspaceId,
+		OPENALICE_CORE_WORKSPACE_DIR: process.cwd(),
+	};
+	return await new Promise((resolvePromise, reject) => {
+		const proc = spawn(process.execPath, [script, ...args], { cwd: process.cwd(), env, stdio: ["ignore", "pipe", "pipe"] });
+		let stdout = "";
+		let stderr = "";
+		const cap = 100_000;
+		const timer = setTimeout(() => {
+			proc.kill("SIGTERM");
+			reject(new Error(`${binary} timed out after ${timeoutMs}ms`));
+		}, timeoutMs);
+		proc.stdout?.on("data", (chunk) => { stdout = (stdout + chunk.toString()).slice(-cap); });
+		proc.stderr?.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-cap); });
+		proc.once("error", (error) => {
+			clearTimeout(timer);
+			reject(error);
+		});
+		proc.once("exit", (code, signal) => {
+			clearTimeout(timer);
+			const text = [stdout.trimEnd(), stderr.trimEnd() ? `stderr:\n${stderr.trimEnd()}` : ""].filter(Boolean).join("\n");
+			if (code === 0) resolvePromise(text || "(no output)");
+			else reject(new Error(`${binary} exited code=${code ?? "null"} signal=${signal ?? "null"}\n${text}`));
+		});
+	});
+}
+
+type WatchDaemonConfig = {
+	enabled?: boolean;
+	scripts?: Array<{
+		id: string;
+		enabled?: boolean;
+		command: string;
+		args?: string[];
+		restart?: boolean;
+		restartDelayMs?: number;
+		logPath?: string;
+	}>;
+};
+
+async function startWatchDaemon(ctx?: any): Promise<void> {
+	if (!isOpenAliceRoot() || shuttingDown) return;
+	const cfgPath = resolve(process.cwd(), "config", "watch-daemon.json");
+	let cfg: WatchDaemonConfig;
+	try { cfg = JSON.parse(await readFile(cfgPath, "utf8")) as WatchDaemonConfig; } catch { return; }
+	if (cfg.enabled === false) return;
+	for (const script of cfg.scripts ?? []) {
+		if (!script?.id || script.enabled === false || !script.command) continue;
+		if (watchChildren.has(script.id)) continue;
+		await spawnWatchScript(script, ctx);
+	}
+}
+
+function stopWatchDaemon(): void {
+	stoppingWatchDaemon = true;
+	for (const proc of watchChildren.values()) killChild(proc);
+	watchChildren.clear();
+	setTimeout(() => { stoppingWatchDaemon = false; }, 1000);
+}
+
+async function watchDaemonStatusText(): Promise<string> {
+	const cfgPath = resolve(process.cwd(), "config", "watch-daemon.json");
+	let declared: string[] = [];
+	try {
+		const cfg = JSON.parse(await readFile(cfgPath, "utf8")) as WatchDaemonConfig;
+		declared = (cfg.scripts ?? []).filter((s) => s.enabled !== false).map((s) => s.id);
+	} catch { /* no config */ }
+	return [
+		`declared: ${declared.length ? declared.join(", ") : "none"}`,
+		`running: ${watchChildren.size ? [...watchChildren.entries()].map(([id, p]) => `${id}:${p.pid ?? "?"}`).join(", ") : "none"}`,
+	].join("\n");
+}
+
+async function spawnWatchScript(script: NonNullable<WatchDaemonConfig["scripts"]>[number], ctx?: any): Promise<void> {
+	const logPath = resolve(process.cwd(), script.logPath || join("logs", "watch-daemon", `${script.id}.log`));
+	await mkdir(dirname(logPath), { recursive: true });
+	const log = createWriteStream(logPath, { flags: "a" });
+	log.write(`\n--- watch script ${script.id} start ${new Date().toISOString()} ---\n`);
+	const cfg = await loadConfig();
+	const env = {
+		...process.env,
+		OPENALICE_MODE: "watch",
+		OPENALICE_WEB_PORT: String(cfg.webPort),
+		OPENALICE_MCP_PORT: String(cfg.mcpPort),
+		OPENALICE_MCP_URL: `http://127.0.0.1:${cfg.mcpPort}/mcp`,
+		AQ_WS_ID: cfg.workspaceId,
+		OPENALICE_CORE_WORKSPACE_DIR: process.cwd(),
+	};
+	const proc = spawn(script.command, script.args ?? [], {
+		cwd: process.cwd(),
+		env,
+		stdio: ["ignore", "pipe", "pipe"],
+		shell: process.platform === "win32",
+		detached: process.platform !== "win32",
+	});
+	watchChildren.set(script.id, proc);
+	proc.stdout?.pipe(log, { end: false });
+	proc.stderr?.pipe(log, { end: false });
+	proc.once("exit", (code, signal) => {
+		watchChildren.delete(script.id);
+		log.write(`--- watch script ${script.id} exit code=${code ?? "null"} signal=${signal ?? "null"} ${new Date().toISOString()} ---\n`);
+		log.end();
+		const shouldRestart = !shuttingDown && !stoppingWatchDaemon && script.restart !== false && code !== 0;
+		if (shouldRestart) {
+			setTimeout(() => { void spawnWatchScript(script, ctx).catch((err) => ctx?.ui?.notify?.(`watch script ${script.id} restart failed: ${formatError(err)}`, "warning")); }, Math.max(1000, Number(script.restartDelayMs) || 5000));
+		}
+	});
+	ctx?.ui?.setStatus?.(`watch:${script.id}`, `watch:${script.id} running`);
 }
 
 async function startBackend(opts: { manual: boolean }): Promise<string> {
@@ -148,6 +335,7 @@ async function statusText(): Promise<string> {
 	return [
 		`OpenAlice: ${state}`,
 		`pid: ${child?.pid ?? "unknown"}`,
+		`watch scripts: ${watchChildren.size ? [...watchChildren.entries()].map(([id, p]) => `${id}:${p.pid ?? "?"}`).join(", ") : "none"}`,
 		`health: ${healthUrl(cfg)}`,
 		`mcp: http://127.0.0.1:${cfg.mcpPort}/mcp`,
 		`workspace: ${cfg.workspaceId}`,

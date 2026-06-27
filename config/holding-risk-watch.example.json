@@ -1,0 +1,27 @@
+{
+  "enabled": false,
+  "intervalMs": 60000,
+  "cooldownMs": 1800000,
+  "marketTimeOnly": true,
+  "useAliceTrack": true,
+  "holdingsNote": "notes_and_reports/holdings.md",
+  "trackQuery": "stock-cn",
+  "notifyTrackHoldingsWithoutRules": false,
+  "thresholds": {
+    "dropFromPrevPct": -3,
+    "dropFromOpenPct": -2,
+    "drawdownFromHighPct": -5,
+    "vwapBreakPct": 0.8
+  },
+  "holdings": {
+    "000001": {
+      "name": "example-stock",
+      "heavy": true,
+      "cost": 10.0,
+      "stop": 9.5,
+      "hardStop": 9.0,
+      "takeProfit": 12.0,
+      "takeProfitAlert": false
+    }
+  }
+}

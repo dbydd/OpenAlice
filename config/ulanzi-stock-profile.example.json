@@ -1,0 +1,24 @@
+{
+  "manifestPath": "/path/to/UlanziDeck/ProfilesV2/<profile>.ulanziProfile/Profiles/<page>/manifest.json",
+  "appSupportDir": "/path/to/UlanziDeck",
+  "activateProfile": false,
+  "restartAppAfterWrite": false,
+  "notesDir": "notes_and_reports/market",
+  "useAliceTrack": true,
+  "trackQuery": "stock-cn",
+  "holdings": ["000001"],
+  "watch": ["600000", "000002"],
+  "indices": ["399300", "399330", "NDAQ", "000001"],
+  "slotPlan": {
+    "0_0": "$holding1",
+    "0_1": "$watch1",
+    "0_2": "$index1",
+    "1_0": "$watch2",
+    "1_1": "$top1",
+    "1_2": "$index2",
+    "2_0": "$top2",
+    "2_1": "$top3",
+    "2_2": "$index3"
+  },
+  "topK": 3
+}

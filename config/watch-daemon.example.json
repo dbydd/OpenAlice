@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "scripts": [
+    {
+      "id": "holding-risk-loop",
+      "enabled": true,
+      "command": "node",
+      "args": ["scripts/watch/holding-risk-loop.mjs"],
+      "restart": true,
+      "restartDelayMs": 5000,
+      "logPath": "logs/watch-daemon/holding-risk-loop.log"
+    }
+  ]
+}

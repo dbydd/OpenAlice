@@ -56,3 +56,12 @@ packages/ibkr/ref/CMakeLists.txt
 # Credential sealing key — lands at the user-data root, which is the repo
 # root whenever OPENALICE_HOME is pinned here (smoke tests, $PWD escape hatch).
 /sealing.key
+
+# Local OpenAlice watch/runtime state and machine-specific helper configs
+/tmp/
+/scratch/
+/config/watch-daemon.json
+/config/holding-risk-watch.json
+/config/ulanzi-stock-profile.json
+/.pi/onlyne-report-target.json
+/.pi/schedule-prompts.json
